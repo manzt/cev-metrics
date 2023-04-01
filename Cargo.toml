@@ -1,0 +1,16 @@
+[package]
+name = "cev-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "cev_graph"
+# "cdylib" is necessary to produce a shared library for Python to import from.
+crate-type = ["cdylib"]
+
+[dependencies]
+delaunator = "1.0.2"
+numpy = "0.18.0"
+petgraph = "0.6.3"
+# "abi3-py37" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.7
+pyo3 = { version = "0.18.0", features = ["abi3-py37"] }
