@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
 import numpy as np
-import cev_graph
+from cev_graph import Graph
 
 def main():
-    arr = np.array([
+    coords = np.array([
         [0, 0],
         [1, 0],
         [1, 1],
         [0, 1],
     ], dtype=np.float64)
-    print(arr)
-    cev_graph.graph(arr)
+    graph = Graph(coords)
+    print(graph)
 
 if __name__ == "__main__":
     main()
