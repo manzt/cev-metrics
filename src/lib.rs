@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use pyo3::types::PyType;
 
 use delaunator::{triangulate, Point};
 use numpy::ndarray::Axis;
@@ -7,7 +6,8 @@ use numpy::PyReadonlyArray2;
 use petgraph::data::{Element, FromElements};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{NodeIndex, UnGraph};
-// use petgraph::visit::Bfs;
+use petgraph::visit::VisitMap;
+use std::collections::{HashSet, VecDeque};
 
 fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
@@ -30,12 +30,51 @@ impl<'a> Labels<'a> {
         }
     }
 
-    fn n_categories(&self) -> usize {
-        self.n_categories
+    fn average_distances(&self, graph: &Graph) -> Vec<f64> {
+        if graph.graph.node_count() != self.codes.len() {
+            panic!("Number of nodes in graph does not match number of self");
+        }
+        let mut data = vec![(0.0, 0); self.n_categories];
+        for edge in graph.graph.raw_edges() {
+            if self.codes[edge.source().index()] == self.codes[edge.target().index()] {
+                let code = self.codes[edge.source().index()] as usize;
+                data[code].0 += edge.weight;
+                data[code].1 += 1;
+            }
+        }
+        data.iter()
+            .map(|(total, count)| *total / *count as f64)
+            .collect()
     }
 
-    fn codes(&self) -> &'a [u16] {
-        &self.codes
+    fn confusion(&self, graph: &Graph, label: u16, threshold: Option<f64>) -> SpatialConfusion {
+        let mut visited_with_threshold = HashSet::<NodeIndex>::new();
+        let mut visited_without_threshold = HashSet::<NodeIndex>::new();
+        for node in graph.graph.node_indices() {
+            if self.codes[node.index()] != label {
+                continue;
+            }
+            let inner = graph.bfs(node, 1, threshold);
+            let outer = graph.bfs(node, 2, None);
+
+            visited_with_threshold.extend(&inner);
+            visited_without_threshold.extend(outer.intersection(&inner));
+        }
+
+        SpatialConfusion {
+            set: visited_without_threshold,
+            boundary_edges: None,
+        }
+    }
+
+    fn confusion_all(&self, graph: &Graph) -> Vec<SpatialConfusion> {
+        let average_distances = self.average_distances(graph);
+        (0..self.n_categories)
+            .map(|label| {
+                let threshold = average_distances[label];
+                self.confusion(graph, label as u16, Some(threshold))
+            })
+            .collect()
     }
 }
 
@@ -43,6 +82,7 @@ impl<'a> Labels<'a> {
 #[derive(Debug)]
 struct Graph {
     graph: UnGraph<usize, f64>,
+    points: Vec<Point>,
 }
 
 impl From<&Vec<Point>> for Graph {
@@ -69,7 +109,10 @@ impl From<&Vec<Point>> for Graph {
                 euclidean_distance(&points[c], &points[a]),
             );
         }
-        Self { graph }
+        Self {
+            graph,
+            points: points.clone(),
+        }
     }
 }
 
@@ -85,22 +128,59 @@ impl From<&PyReadonlyArray2<'_, f64>> for Graph {
     }
 }
 
-impl Graph {
-    fn average_distance_for_labels(&self, labels: &Labels) -> Vec<f64> {
-        if self.graph.node_count() != labels.codes().len() {
-            panic!("Number of nodes in graph does not match number of labels");
+struct SpatialConfusion {
+    set: HashSet<NodeIndex>,
+    boundary_edges: Option<Vec<(usize, usize)>>,
+}
+
+impl SpatialConfusion {
+    fn set(&self) -> &HashSet<NodeIndex> {
+        &self.set
+    }
+
+    fn boundary_edges(&self) -> Option<&Vec<(usize, usize)>> {
+        self.boundary_edges.as_ref()
+    }
+
+    fn add_boundary_edge(&mut self, edge: (usize, usize)) {
+        if let Some(boundary_edges) = self.boundary_edges.as_mut() {
+            boundary_edges.push(edge);
+        } else {
+            self.boundary_edges = Some(vec![edge]);
         }
-        let mut data = vec![(0.0, 0); labels.n_categories()];
-        for edge in self.graph.raw_edges() {
-            if labels.codes()[edge.source().index()] == labels.codes()[edge.target().index()] {
-                let code = labels.codes()[edge.source().index()] as usize;
-                data[code].0 += edge.weight;
-                data[code].1 += 1;
+    }
+}
+
+impl Graph {
+    fn bfs(
+        &self,
+        start: NodeIndex,
+        max_depth: usize,
+        threshold: Option<f64>,
+    ) -> HashSet<NodeIndex> {
+        // let mut discovered = self.graph.visit_map();
+        let mut discovered = HashSet::new();
+        discovered.visit(start);
+        let mut stack = VecDeque::new();
+        stack.push_front((start, 0));
+        while let Some((node, depth)) = stack.pop_front() {
+            if depth > max_depth {
+                continue;
+            }
+            for succ in self.graph.neighbors(node) {
+                if let Some(threshold) = threshold {
+                    if euclidean_distance(&self.points[node.index()], &self.points[succ.index()])
+                        > threshold
+                    {
+                        continue;
+                    }
+                }
+                if discovered.visit(succ) {
+                    stack.push_back((succ, depth + 1));
+                }
             }
         }
-        data.iter()
-            .map(|(total, count)| *total / *count as f64)
-            .collect()
+        discovered
     }
 }
 
