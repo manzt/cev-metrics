@@ -21,21 +21,23 @@ impl From<&Vec<Point>> for CevGraph {
 
         let nodes = std::iter::repeat(Element::Node { weight: 0 }).take(points.len());
         let mut graph = UnGraph::<_, _>::from_elements(nodes);
+        // let g2 = UnGraph::<usize, usize>::new_undirected();
 
         for triangle in triangulation.triangles.chunks(3) {
             let (a, b, c) = (triangle[0], triangle[1], triangle[2]);
-            // TODO: Avoid adding duplicate edges
-            graph.add_edge(
+
+            // update_edge avoids adding duplicate edges
+            graph.update_edge(
                 NodeIndex::new(a),
                 NodeIndex::new(b),
                 euclidean_distance(&points[a], &points[b]),
             );
-            graph.add_edge(
+            graph.update_edge(
                 NodeIndex::new(b),
                 NodeIndex::new(c),
                 euclidean_distance(&points[b], &points[c]),
             );
-            graph.add_edge(
+            graph.update_edge(
                 NodeIndex::new(c),
                 NodeIndex::new(a),
                 euclidean_distance(&points[c], &points[a]),
