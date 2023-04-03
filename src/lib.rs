@@ -6,7 +6,7 @@ use numpy::PyReadonlyArray2;
 use petgraph::data::{Element, FromElements};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
-use petgraph::visit::VisitMap;
+use petgraph::visit::{EdgeRef, VisitMap};
 use std::collections::{HashSet, VecDeque};
 
 fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
@@ -65,10 +65,9 @@ impl<'a> Labels<'a> {
         // TODO, avoid second pass? Can we save edges found in bfs?
         let mut boundary_edges = HashSet::new();
         for source in visited_with_threshold {
-            for target in graph.graph.neighbors(source) {
-                if visited_without_threshold.contains(&target) {
-                    let edge = graph.graph.find_edge(source, target).unwrap();
-                    boundary_edges.insert(edge);
+            for edge in graph.graph.edges(source) {
+                if visited_without_threshold.contains(&edge.target()) {
+                    boundary_edges.insert(edge.id());
                 }
             }
         }
@@ -88,6 +87,19 @@ impl<'a> Labels<'a> {
                 self.confusion(graph, label as u16, Some(threshold))
             })
             .collect()
+    }
+
+    fn neighborhood(&self, graph: &Graph, label: u16, confusion_results: &[ConfusionResult]) {
+        let mut boundary_edges: HashSet<EdgeIndex> = HashSet::new();
+        for result in confusion_results {
+            boundary_edges.extend(&result.boundary_edges);
+        }
+        let boundary_edge_distances = boundary_edges.iter().map(|edge_index| {
+            todo!();
+            // graph.graph.edges(a)
+            // graph.raw_edges[edge_index.index()]
+        });
+        todo!();
     }
 }
 
