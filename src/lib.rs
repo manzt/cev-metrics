@@ -22,6 +22,31 @@ struct Labels<'a> {
     n_categories: usize,
 }
 
+#[derive(Debug)]
+struct ConfusionResult<'a> {
+    set: HashSet<NodeIndex>,
+    boundaries: HashSet<EdgeIndex>,
+    labels: &'a Labels<'a>,
+}
+
+impl<'a> ConfusionResult<'a> {
+    fn counts(&self) -> Vec<u64> {
+        let mut v = vec![0; self.labels.n_categories];
+        for node in &self.set {
+            let code = self.labels.codes[node.index()];
+            v[code as usize] += 1;
+        }
+        v
+    }
+
+    fn contains(&self, node: NodeIndex) -> bool {
+        self.set.contains(&node)
+    }
+}
+
+#[derive(Debug)]
+struct NeighborhoodResult {}
+
 impl<'a> Labels<'a> {
     fn from_codes(codes: &'a [u16]) -> Self {
         let max = *codes.iter().max().unwrap();
@@ -48,7 +73,12 @@ impl<'a> Labels<'a> {
             .collect()
     }
 
-    fn confusion(&self, graph: &Graph, label: u16, threshold: Option<f64>) -> ConfusionResult {
+    fn confusion_for_label(
+        &self,
+        graph: &Graph,
+        label: u16,
+        threshold: Option<f64>,
+    ) -> ConfusionResult {
         let mut visited_with_threshold = HashSet::<NodeIndex>::new();
         let mut visited_without_threshold = HashSet::<NodeIndex>::new();
 
@@ -74,32 +104,64 @@ impl<'a> Labels<'a> {
 
         ConfusionResult {
             set: visited_without_threshold,
-            boundary_edges,
+            boundaries: boundary_edges,
             labels: &self,
         }
     }
 
-    fn confusion_all(&self, graph: &Graph) -> Vec<ConfusionResult> {
+    fn confusion(&self, graph: &Graph) -> Vec<ConfusionResult> {
         let average_distances = self.average_distances(graph);
         (0..self.n_categories)
             .map(|label| {
                 let threshold = average_distances[label];
-                self.confusion(graph, label as u16, Some(threshold))
+                self.confusion_for_label(graph, label as u16, Some(threshold))
             })
             .collect()
     }
 
-    fn neighborhood(&self, graph: &Graph, label: u16, confusion_results: &[ConfusionResult]) {
-        let mut boundary_edges: HashSet<EdgeIndex> = HashSet::new();
-        for result in confusion_results {
-            boundary_edges.extend(&result.boundary_edges);
-        }
-        let boundary_edge_distances = boundary_edges.iter().map(|edge_index| {
-            todo!();
-            // graph.graph.edges(a)
-            // graph.raw_edges[edge_index.index()]
+    fn neighborhood_for_label(
+        &self,
+        graph: &Graph,
+        counfusion_result: &ConfusionResult,
+        max_depth: usize,
+    ) -> Vec<(usize, f64)> {
+        let boundary_distances = counfusion_result.boundaries.iter().map(|edge_index| {
+            let edge = &graph.graph.raw_edges()[edge_index.index()];
+            let label = self.codes[edge.target().index()];
+            (label as usize, edge.weight)
         });
-        todo!();
+
+        let mut visited = HashSet::new();
+        for edge_index in &counfusion_result.boundaries {
+            let edge = &graph.graph.raw_edges()[edge_index.index()];
+            for target in graph.bfs(edge.target(), max_depth, None) {
+                if counfusion_result.set.contains(&target) {
+                    continue;
+                }
+                visited.insert((edge.source(), target));
+            }
+        }
+
+        let connections = visited.iter().map(|(source, target)| {
+            let label = self.codes[target.index()];
+            let distance =
+                euclidean_distance(&graph.points[source.index()], &graph.points[target.index()]);
+            (label as usize, distance)
+        });
+
+        boundary_distances.chain(connections).collect()
+    }
+
+    fn neighborhood(
+        &self,
+        graph: &Graph,
+        counfusion_results: &Vec<ConfusionResult>,
+        max_depth: Option<usize>,
+    ) -> Vec<Vec<(usize, f64)>> {
+        counfusion_results
+            .iter()
+            .map(|c| self.neighborhood_for_label(graph, c, max_depth.unwrap_or(1)))
+            .collect()
     }
 }
 
@@ -153,24 +215,6 @@ impl From<&PyReadonlyArray2<'_, f64>> for Graph {
     }
 }
 
-#[derive(Debug)]
-struct ConfusionResult<'a> {
-    set: HashSet<NodeIndex>,
-    boundary_edges: HashSet<EdgeIndex>,
-    labels: &'a Labels<'a>,
-}
-
-impl<'a> ConfusionResult<'a> {
-    fn counts(&self) -> Vec<u64> {
-        let mut v = vec![0; self.labels.n_categories];
-        for node in &self.set {
-            let code = self.labels.codes[node.index()];
-            v[code as usize] += 1;
-        }
-        v
-    }
-}
-
 impl Graph {
     fn bfs(
         &self,
@@ -217,15 +261,14 @@ impl Graph {
         )
     }
 
-    fn confusion_all(&self) -> () {
+    fn run(&self) -> () {
         let codes = vec![0, 1, 2, 2];
         let labels = Labels::from_codes(&codes);
-        let result: Vec<_> = labels
-            .confusion_all(&self)
-            .iter()
-            .map(|r| r.counts())
-            .collect();
+        let confusion = labels.confusion(&self);
+        let result: Vec<_> = confusion.iter().map(|r| r.counts()).collect();
         println!("{:?}", result);
+        let neighborhood = labels.neighborhood(&self, &confusion, None);
+        println!("{:?}", neighborhood);
     }
 }
 
