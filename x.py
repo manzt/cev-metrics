@@ -12,6 +12,7 @@ def main():
     ], dtype=np.float64)
     graph = Graph(coords)
     print(graph)
+    graph.confusion_all()
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ use numpy::ndarray::Axis;
 use numpy::PyReadonlyArray2;
 use petgraph::data::{Element, FromElements};
 use petgraph::dot::{Config, Dot};
-use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use petgraph::visit::VisitMap;
 use std::collections::{HashSet, VecDeque};
 
@@ -16,6 +16,7 @@ fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
 /// A set of labels for a graph
 /// Indices of the labels correspond to the indices of the nodes in the graph
 /// The labels are represented as integers between 0 and n_categories - 1.
+#[derive(Debug)]
 struct Labels<'a> {
     codes: &'a [u16],
     n_categories: usize,
@@ -47,27 +48,39 @@ impl<'a> Labels<'a> {
             .collect()
     }
 
-    fn confusion(&self, graph: &Graph, label: u16, threshold: Option<f64>) -> SpatialConfusion {
+    fn confusion(&self, graph: &Graph, label: u16, threshold: Option<f64>) -> ConfusionResult {
         let mut visited_with_threshold = HashSet::<NodeIndex>::new();
         let mut visited_without_threshold = HashSet::<NodeIndex>::new();
+
         for node in graph.graph.node_indices() {
             if self.codes[node.index()] != label {
                 continue;
             }
             let inner = graph.bfs(node, 1, threshold);
             let outer = graph.bfs(node, 2, None);
-
             visited_with_threshold.extend(&inner);
             visited_without_threshold.extend(outer.intersection(&inner));
         }
 
-        SpatialConfusion {
+        // TODO, avoid second pass? Can we save edges found in bfs?
+        let mut boundary_edges = HashSet::new();
+        for source in visited_with_threshold {
+            for target in graph.graph.neighbors(source) {
+                if visited_without_threshold.contains(&target) {
+                    let edge = graph.graph.find_edge(source, target).unwrap();
+                    boundary_edges.insert(edge);
+                }
+            }
+        }
+
+        ConfusionResult {
             set: visited_without_threshold,
-            boundary_edges: None,
+            boundary_edges,
+            labels: &self,
         }
     }
 
-    fn confusion_all(&self, graph: &Graph) -> Vec<SpatialConfusion> {
+    fn confusion_all(&self, graph: &Graph) -> Vec<ConfusionResult> {
         let average_distances = self.average_distances(graph);
         (0..self.n_categories)
             .map(|label| {
@@ -128,26 +141,21 @@ impl From<&PyReadonlyArray2<'_, f64>> for Graph {
     }
 }
 
-struct SpatialConfusion {
+#[derive(Debug)]
+struct ConfusionResult<'a> {
     set: HashSet<NodeIndex>,
-    boundary_edges: Option<Vec<(usize, usize)>>,
+    boundary_edges: HashSet<EdgeIndex>,
+    labels: &'a Labels<'a>,
 }
 
-impl SpatialConfusion {
-    fn set(&self) -> &HashSet<NodeIndex> {
-        &self.set
-    }
-
-    fn boundary_edges(&self) -> Option<&Vec<(usize, usize)>> {
-        self.boundary_edges.as_ref()
-    }
-
-    fn add_boundary_edge(&mut self, edge: (usize, usize)) {
-        if let Some(boundary_edges) = self.boundary_edges.as_mut() {
-            boundary_edges.push(edge);
-        } else {
-            self.boundary_edges = Some(vec![edge]);
+impl<'a> ConfusionResult<'a> {
+    fn counts(&self) -> Vec<u64> {
+        let mut v = vec![0; self.labels.n_categories];
+        for node in &self.set {
+            let code = self.labels.codes[node.index()];
+            v[code as usize] += 1;
         }
+        v
     }
 }
 
@@ -158,7 +166,6 @@ impl Graph {
         max_depth: usize,
         threshold: Option<f64>,
     ) -> HashSet<NodeIndex> {
-        // let mut discovered = self.graph.visit_map();
         let mut discovered = HashSet::new();
         discovered.visit(start);
         let mut stack = VecDeque::new();
@@ -196,6 +203,17 @@ impl Graph {
             "{:?}",
             Dot::with_config(&self.graph, &[Config::EdgeNoLabel])
         )
+    }
+
+    fn confusion_all(&self) -> () {
+        let codes = vec![0, 1, 2, 2];
+        let labels = Labels::from_codes(&codes);
+        let result: Vec<_> = labels
+            .confusion_all(&self)
+            .iter()
+            .map(|r| r.counts())
+            .collect();
+        println!("{:?}", result);
     }
 }
 
