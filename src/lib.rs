@@ -39,8 +39,18 @@ impl<'a> ConfusionResult<'a> {
         v
     }
 
-    fn contains(&self, node: NodeIndex) -> bool {
+    fn contains(&self, node: &NodeIndex) -> bool {
         self.set.contains(&node)
+    }
+}
+
+trait Matrix {
+    fn counts(&self) -> Vec<Vec<u64>>;
+}
+
+impl<'a> Matrix for Vec<ConfusionResult<'a>> {
+    fn counts(&self) -> Vec<Vec<u64>> {
+        self.iter().map(|r| r.counts()).collect()
     }
 }
 
@@ -135,7 +145,7 @@ impl<'a> Labels<'a> {
         for edge_index in &counfusion_result.boundaries {
             let edge = &graph.graph.raw_edges()[edge_index.index()];
             for target in graph.bfs(edge.target(), max_depth, None) {
-                if counfusion_result.set.contains(&target) {
+                if counfusion_result.contains(&target) {
                     continue;
                 }
                 visited.insert((edge.source(), target));
@@ -265,15 +275,14 @@ impl Graph {
         let codes = vec![0, 1, 2, 2];
         let labels = Labels::from_codes(&codes);
         let confusion = labels.confusion(&self);
-        let result: Vec<_> = confusion.iter().map(|r| r.counts()).collect();
-        println!("{:?}", result);
+        println!("{:?}", confusion.counts());
         let neighborhood = labels.neighborhood(&self, &confusion, None);
         println!("{:?}", neighborhood);
     }
 }
 
 #[pymodule]
-fn cev_graph(_py: Python, m: &PyModule) -> PyResult<()> {
+fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Graph>()?;
     Ok(())
 }

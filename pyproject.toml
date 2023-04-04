@@ -3,7 +3,7 @@ requires = ["maturin>=0.14,<0.15"]
 build-backend = "maturin"
 
 [project]
-name = "cev-graph"
+name = "cev-metrics"
 dynamic = ["version"]
 dependencies = ["numpy"]
 

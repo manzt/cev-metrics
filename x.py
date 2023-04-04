@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
-from cev_graph import Graph
+from cev_metrics import Graph
 
 def main():
     # df = pd.read_parquet("../cev-user-study/task2/parquet/T0A.parquet")

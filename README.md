@@ -1,4 +1,4 @@
-# cev-graph
+# cev-metrics
 
 ```sh
 hatch shell
