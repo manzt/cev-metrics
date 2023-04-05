@@ -55,7 +55,22 @@ impl<'a> Matrix for Vec<ConfusionResult<'a>> {
 }
 
 #[derive(Debug)]
-struct NeighborhoodResult {}
+struct NeighborhoodResult<'a> {
+    distances: Vec<(usize, f64)>,
+    labels: &'a Labels<'a>,
+}
+
+impl <'a> NeighborhoodResult<'a> {
+
+    fn summarize(&self) -> Vec<(i32, f64)> {
+        let mut data = vec![(0, 0.0); self.labels.n_categories];
+        for (label, distance) in &self.distances {
+            data[*label].0 += 1;
+            data[*label].1 += distance;
+        }
+        data
+    }
+}
 
 impl<'a> Labels<'a> {
     fn from_codes(codes: &'a [u16]) -> Self {
@@ -134,7 +149,7 @@ impl<'a> Labels<'a> {
         graph: &Graph,
         counfusion_result: &ConfusionResult,
         max_depth: usize,
-    ) -> Vec<(usize, f64)> {
+    ) -> NeighborhoodResult {
         let boundary_distances = counfusion_result.boundaries.iter().map(|edge_index| {
             let edge = &graph.graph.raw_edges()[edge_index.index()];
             let label = self.codes[edge.target().index()];
@@ -159,7 +174,10 @@ impl<'a> Labels<'a> {
             (label as usize, distance)
         });
 
-        boundary_distances.chain(connections).collect()
+        NeighborhoodResult {
+            distances: boundary_distances.chain(connections).collect(),
+            labels: &self,
+        }
     }
 
     fn neighborhood(
@@ -167,7 +185,7 @@ impl<'a> Labels<'a> {
         graph: &Graph,
         counfusion_results: &Vec<ConfusionResult>,
         max_depth: Option<usize>,
-    ) -> Vec<Vec<(usize, f64)>> {
+    ) -> Vec<NeighborhoodResult> {
         counfusion_results
             .iter()
             .map(|c| self.neighborhood_for_label(graph, c, max_depth.unwrap_or(1)))
@@ -281,10 +299,86 @@ impl Graph {
     }
 }
 
+
 #[pymodule]
 fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Graph>()?;
     Ok(())
+}
+
+enum Side {
+    Left,
+    Right,
+}
+
+struct StepFunction {
+    x: Vec<f64>,
+    y: Vec<f64>,
+    side: Side,
+}
+
+impl StepFunction {
+    fn new(x: &Vec<f64>, y: &Vec<f64>, ival: f64, sorted: bool, side: Side) -> Self {
+        assert_eq!(x.len(), y.len(), "x and y do not have the same length");
+
+        let mut x = x.clone();
+        let mut y = y.clone();
+
+        x.insert(0, f64::NEG_INFINITY);
+        y.insert(0, ival);
+
+        if !sorted {
+            let mut indices: Vec<usize> = (0..x.len()).collect();
+            indices.sort_unstable_by(|a, b| x[*a].partial_cmp(&x[*b]).unwrap());
+
+            let mut sorted_x = vec![0.; x.len()];
+            let mut sorted_y = vec![0.; y.len()];
+
+            for (i, &idx) in indices.iter().enumerate() {
+                sorted_x[i] = x[idx];
+                sorted_y[i] = y[idx];
+            }
+
+            x = sorted_x;
+            y = sorted_y;
+        }
+
+        StepFunction { x, y, side }
+    }
+
+    fn evaluate(&self, time: f64) -> f64 {
+        let tind = match self.side {
+            Side::Left => self.x.binary_search_by(|a| a.partial_cmp(&time).unwrap()).unwrap_or_else(|x| x),
+            Side::Right => self.x.binary_search_by(|a| a.partial_cmp(&time).unwrap()).unwrap_or_else(|x| x.saturating_sub(1)),
+        };
+        self.y[tind]
+    }
+}
+
+
+struct ECDF {
+    step_function: StepFunction,
+}
+
+impl ECDF {
+    /// Constructs a new `ECDF` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Observations
+    /// * `side` - Side of the step intervals. Side::Left corresponds to (a, b], Side::Right corresponds to [a, b).
+    pub fn new(x: &Vec<f64>, side: Side) -> Self {
+        let mut sorted_x = x.clone();
+        sorted_x.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let nobs = sorted_x.len() as f64;
+        let y: Vec<f64> = (1..=sorted_x.len()).map(|i| i as f64 / nobs).collect();
+        let step_function = StepFunction::new(&sorted_x, &y, 0.0, false, side);
+        ECDF { step_function }
+    }
+
+    pub fn evaluate(&self, point: f64) -> f64 {
+        self.step_function.evaluate(point)
+    }
 }
 
 #[cfg(test)]
@@ -292,8 +386,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let result = 4;
-        assert_eq!(result, 4);
+    fn ecdf_example() {
+        let ecdf = ECDF::new(&vec![3., 3., 1., 4.], Side::Right);
+        let data = vec![3., 55., 0.5, 1.5];
+        let result: Vec<_> = data.iter().map(|x| ecdf.evaluate(*x)).collect();
+        // TODO: fix me!
+        assert_eq!(result, vec![0.75, 1.0, 0.0, 0.25]);
     }
 }
