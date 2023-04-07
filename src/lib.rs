@@ -1,15 +1,15 @@
 use pyo3::prelude::*;
+use rayon::prelude::*;
+use std::collections::{HashSet, VecDeque};
+use std::sync::Mutex;
 
 use delaunator::{triangulate, Point};
 use numpy::ndarray::{Array, Array2, Axis};
-use numpy::IntoPyArray;
-use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2};
-
+use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use petgraph::data::{Element, FromElements};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use petgraph::visit::{EdgeRef, VisitMap};
-use std::collections::{HashSet, VecDeque};
 
 mod step_function;
 
@@ -116,21 +116,27 @@ impl<'a> Labels<'a> {
         label: i16,
         threshold: Option<f64>,
     ) -> ConfusionResult {
-        let mut visited_with_threshold = HashSet::<NodeIndex>::new();
-        let mut visited_without_threshold = HashSet::<NodeIndex>::new();
+        let nodes: Vec<_> = graph
+            .graph
+            .node_indices()
+            .filter(|node| self.codes[node.index()] == label)
+            .collect();
 
-        for node in graph.graph.node_indices() {
-            if self.codes[node.index()] != label {
-                continue;
-            }
-            let inner = graph.bfs(node, 1, threshold);
-            let outer = graph.bfs(node, 2, None);
-            visited_with_threshold.extend(&inner);
-            visited_without_threshold.extend(outer.intersection(&inner));
-        }
+        let (visited_with_threshold, visited_without_threshold) = nodes
+            .par_iter()
+            .map(|node| (graph.bfs(*node, 1, threshold), graph.bfs(*node, 2, None)))
+            .reduce(
+                || (HashSet::new(), HashSet::new()),
+                |mut acc, (inner, outer)| {
+                    acc.0.extend(inner);
+                    acc.1.extend(outer);
+                    acc
+                },
+            );
 
         // TODO, avoid second pass? Can we save edges found in bfs?
         let mut boundary_edges = HashSet::new();
+
         for source in visited_with_threshold {
             for edge in graph.graph.edges(source) {
                 if visited_without_threshold.contains(&edge.target()) {

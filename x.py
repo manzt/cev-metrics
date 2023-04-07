@@ -14,13 +14,15 @@ def main():
         }
     ).astype({"label": "category"})
 
-    print(df.info())
-    graph = Graph(df[["x", "y"]].values)
+    df.info()
 
+    points = df[["x", "y"]].values
     labels = df["label"].cat.codes.values
+
     if labels.dtype != np.int16:
         labels = labels.astype(np.int16)
 
+    graph = Graph(points)
     data = confusion(graph, labels)
     print(data)
 
