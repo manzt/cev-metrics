@@ -1,13 +1,17 @@
 use pyo3::prelude::*;
 
 use delaunator::{triangulate, Point};
-use numpy::ndarray::Axis;
-use numpy::PyReadonlyArray2;
+use numpy::ndarray::{Array, Array2, Axis};
+use numpy::IntoPyArray;
+use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+
 use petgraph::data::{Element, FromElements};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use petgraph::visit::{EdgeRef, VisitMap};
 use std::collections::{HashSet, VecDeque};
+
+mod step_function;
 
 fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
@@ -18,7 +22,7 @@ fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
 /// The labels are represented as integers between 0 and n_categories - 1.
 #[derive(Debug)]
 struct Labels<'a> {
-    codes: &'a [u16],
+    codes: &'a [i16],
     n_categories: usize,
 }
 
@@ -45,12 +49,21 @@ impl<'a> ConfusionResult<'a> {
 }
 
 trait Matrix {
-    fn counts(&self) -> Vec<Vec<u64>>;
+    fn counts(&self) -> Array2<u64>;
 }
 
 impl<'a> Matrix for Vec<ConfusionResult<'a>> {
-    fn counts(&self) -> Vec<Vec<u64>> {
-        self.iter().map(|r| r.counts()).collect()
+    fn counts(&self) -> Array2<u64> {
+        let n = self[0].labels.n_categories;
+        let codes = self[0].labels.codes;
+        let mut data = Array::from_elem((n, n), 0u64);
+        for (i, result) in self.iter().enumerate() {
+            for node in result.set.iter() {
+                let code = codes[node.index()];
+                data[[i, code as usize]] += 1;
+            }
+        }
+        data
     }
 }
 
@@ -72,7 +85,7 @@ impl<'a> NeighborhoodResult<'a> {
 }
 
 impl<'a> Labels<'a> {
-    fn from_codes(codes: &'a [u16]) -> Self {
+    fn from_codes(codes: &'a [i16]) -> Self {
         let max = *codes.iter().max().unwrap();
         Self {
             codes,
@@ -100,7 +113,7 @@ impl<'a> Labels<'a> {
     fn confusion_for_label(
         &self,
         graph: &Graph,
-        label: u16,
+        label: i16,
         threshold: Option<f64>,
     ) -> ConfusionResult {
         let mut visited_with_threshold = HashSet::<NodeIndex>::new();
@@ -138,7 +151,7 @@ impl<'a> Labels<'a> {
         (0..self.n_categories)
             .map(|label| {
                 let threshold = average_distances[label];
-                self.confusion_for_label(graph, label as u16, Some(threshold))
+                self.confusion_for_label(graph, label as i16, Some(threshold))
             })
             .collect()
     }
@@ -284,184 +297,27 @@ impl Graph {
     fn __repr__(&self) -> String {
         format!(
             "{:?}",
-            Dot::with_config(&self.graph, &[Config::EdgeNoLabel])
+            Dot::with_config(&self.graph, &[Config::EdgeNoLabel, Config::NodeNoLabel])
         )
-    }
-
-    fn run(&self) -> () {
-        let codes = vec![0, 1, 2, 2];
-        let labels = Labels::from_codes(&codes);
-        let confusion = labels.confusion(&self);
-        println!("{:?}", confusion.counts());
-        let neighborhood = labels.neighborhood(&self, &confusion, None);
-        println!("{:?}", neighborhood);
     }
 }
 
 #[pymodule]
 fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Graph>()?;
+
+    #[pyfn(m)]
+    #[pyo3(name = "confusion")]
+    fn confusion_py<'py>(
+        py: Python<'py>,
+        graph: &Graph,
+        codes: PyReadonlyArray1<'_, i16>,
+    ) -> &'py PyArray2<u64> {
+        let labels = Labels::from_codes(&codes.as_slice().unwrap());
+        let confusion = labels.confusion(&graph);
+        let counts = confusion.counts().into_pyarray(py);
+        counts
+    }
+
     Ok(())
-}
-
-#[derive(Copy, Clone, Debug)]
-enum Side {
-    Left,
-    Right,
-}
-
-struct StepFunction {
-    x: Vec<f64>,
-    y: Vec<f64>,
-    side: Side,
-}
-
-impl StepFunction {
-    fn new(x: &Vec<f64>, y: &Vec<f64>, ival: f64, sorted: bool, side: Side) -> Self {
-        assert_eq!(x.len(), y.len(), "x and y do not have the same length");
-
-        let mut x = x.clone();
-        let mut y = y.clone();
-
-        x.insert(0, f64::NEG_INFINITY);
-        y.insert(0, ival);
-
-        if !sorted {
-            let mut indices: Vec<usize> = (0..x.len()).collect();
-            indices.sort_unstable_by(|a, b| x[*a].partial_cmp(&x[*b]).unwrap());
-
-            let mut sorted_x = vec![0.; x.len()];
-            let mut sorted_y = vec![0.; y.len()];
-
-            for (i, &idx) in indices.iter().enumerate() {
-                sorted_x[i] = x[idx];
-                sorted_y[i] = y[idx];
-            }
-
-            x = sorted_x;
-            y = sorted_y;
-        }
-
-        StepFunction { x, y, side }
-    }
-
-    fn evaluate(&self, x: f64) -> f64 {
-        let tind = match self.x.binary_search_by(|a| a.total_cmp(&x)) {
-            Ok(i) => i - 1,
-            Err(i) => match self.side {
-                Side::Left => i - 1,
-                Side::Right => {
-                    let mut j = i;
-                    while self.x[i] == self.x[j] && j < self.x.len() - 1 {
-                        j += 1;
-                    }
-                    j
-                }
-            },
-        };
-        self.y[clamp(tind, 0, self.y.len() - 1)]
-    }
-}
-
-fn clamp<T: PartialOrd>(x: T, min: T, max: T) -> T {
-    if x < min {
-        min
-    } else if x > max {
-        max
-    } else {
-        x
-    }
-}
-
-struct ECDF {
-    step_function: StepFunction,
-}
-
-impl ECDF {
-    /// Constructs a new `ECDF` instance.
-    ///
-    /// # Arguments
-    ///
-    /// * `x` - Observations
-    /// * `side` - Side of the step intervals. Side::Left corresponds to (a, b], Side::Right corresponds to [a, b).
-    pub fn new(x: &Vec<f64>, side: Side) -> Self {
-        let mut sorted_x = x.clone();
-        sorted_x.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        let nobs = sorted_x.len() as f64;
-        let y: Vec<f64> = (1..=sorted_x.len()).map(|i| i as f64 / nobs).collect();
-        let step_function = StepFunction::new(&sorted_x, &y, 0.0, false, side);
-        ECDF { step_function }
-    }
-
-    pub fn evaluate(&self, point: f64) -> f64 {
-        self.step_function.evaluate(point)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_step_function() {
-        let x = (0..20).map(|i| i as f64).collect::<Vec<_>>();
-        let y = x.clone();
-        let f = StepFunction::new(&x, &y, 0.0, true, Side::Left);
-        let vals = [3.2, 4.5, 24., -3.1, 3.0, 4.0];
-        assert_eq!(
-            &vals
-                .iter()
-                .map(|&point| f.evaluate(point) as i32)
-                .collect::<Vec<_>>(),
-            &[3, 4, 19, 0, 2, 3],
-        )
-    }
-
-    #[test]
-    #[should_panic(expected = "x and y do not have the same length")]
-    fn test_step_function_bad_shape() {
-        let x = (0..20).map(|i| i as f64).collect::<Vec<_>>();
-        let y = (0..21).map(|i| i as f64).collect::<Vec<_>>();
-        StepFunction::new(&x, &y, 0.0, true, Side::Left);
-    }
-
-    #[test]
-    fn test_step_function_value_side_right() {
-        let x = (0..20).map(|i| i as f64).collect::<Vec<_>>();
-        let y = x.clone();
-        let f = StepFunction::new(&x, &y, 0.0, true, Side::Right);
-        let vals = [3.2, 4.5, 24., -3.1, 3.0, 4.0];
-        assert_eq!(
-            &vals
-                .iter()
-                .map(|&point| f.evaluate(point) as i32)
-                .collect::<Vec<_>>(),
-            &[3, 4, 19, 0, 3, 4],
-        )
-    }
-
-    #[test]
-    fn test_step_function_repeated_values() {
-        let x = vec![1., 1., 2., 2., 2., 3., 3., 3., 4., 5.];
-        let y = vec![6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
-        let points = vec![1., 2., 3., 4., 5.];
-
-        let f = StepFunction::new(&x, &y, 0.0, true, Side::Left);
-        assert_eq!(
-            &points
-                .iter()
-                .map(|&point| f.evaluate(point) as i32)
-                .collect::<Vec<_>>(),
-            &[0, 7, 10, 13, 14],
-        );
-
-        let f2 = StepFunction::new(&x, &y, 0.0, true, Side::Right);
-        assert_eq!(
-            &points
-                .iter()
-                .map(|&point| f2.evaluate(point) as i32)
-                .collect::<Vec<_>>(),
-            &[7, 10, 13, 14, 15],
-        );
-    }
 }
