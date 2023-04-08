@@ -1,7 +1,6 @@
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::collections::{HashSet, VecDeque};
-use std::sync::Mutex;
 
 use delaunator::{triangulate, Point};
 use numpy::ndarray::{Array, Array2, Axis};
@@ -34,25 +33,16 @@ struct ConfusionResult<'a> {
 }
 
 impl<'a> ConfusionResult<'a> {
-    fn counts(&self) -> Vec<u64> {
-        let mut v = vec![0; self.labels.n_categories];
-        for node in &self.set {
-            let code = self.labels.codes[node.index()];
-            v[code as usize] += 1;
-        }
-        v
-    }
-
     fn contains(&self, node: &NodeIndex) -> bool {
         self.set.contains(&node)
     }
 }
 
-trait Matrix {
+trait ConfusionMatrix {
     fn counts(&self) -> Array2<u64>;
 }
 
-impl<'a> Matrix for Vec<ConfusionResult<'a>> {
+impl<'a> ConfusionMatrix for Vec<ConfusionResult<'a>> {
     fn counts(&self) -> Array2<u64> {
         let n = self[0].labels.n_categories;
         let codes = self[0].labels.codes;
@@ -74,12 +64,65 @@ struct NeighborhoodResult<'a> {
 }
 
 impl<'a> NeighborhoodResult<'a> {
-    fn summarize(&self) -> Vec<(i32, f64)> {
-        let mut data = vec![(0, 0.0); self.labels.n_categories];
+    fn summarize(&self) -> Vec<Option<(i32, f64)>> {
+        let mut data = vec![None; self.labels.n_categories];
         for (label, distance) in &self.distances {
-            data[*label].0 += 1;
-            data[*label].1 += distance;
+            data[*label] = match data[*label] {
+                None => Some((1, *distance)),
+                Some(x) => Some((x.0 + 1, x.1 + *distance)),
+            }
         }
+        for entry in data.iter_mut() {
+            if let Some((count, total)) = entry {
+                *total = *total / *count as f64;
+            }
+        }
+        data
+    }
+}
+
+trait NeighborhoodSummary {
+    fn score(&self) -> Array2<f64>;
+}
+
+impl<'a> NeighborhoodSummary for Vec<NeighborhoodResult<'a>> {
+    fn score(&self) -> Array2<f64> {
+        let summaries: Vec<_> = self.iter().map(|n| n.summarize()).collect();
+
+        let counts: Vec<_> = summaries
+            .iter()
+            .flat_map(|summary| {
+                summary
+                    .iter()
+                    .filter_map(|entry| entry.and_then(|x| Some(x.0 as f64)))
+            })
+            .collect();
+
+        let distances: Vec<_> = summaries
+            .iter()
+            .flat_map(|summary| {
+                summary
+                    .iter()
+                    .filter_map(|entry| entry.and_then(|x| Some(x.1)))
+            })
+            .collect();
+
+        let ecdf_counts = step_function::ECDF::new(&counts, step_function::Side::Left);
+        let ecdf_dist = step_function::ECDF::new(&distances, step_function::Side::Left);
+
+        let n = self[0].labels.n_categories;
+        let mut data = Array::from_elem((n, n), 0f64);
+
+        for i in 0..n {
+            for j in 0..n {
+                if let Some((count, dist)) = summaries[i][j] {
+                    let count_score = ecdf_counts.evaluate(count as f64);
+                    let dist_score = ecdf_dist.evaluate(dist);
+                    data[[i, j]] = count_score * (1.0 - dist_score);
+                }
+            }
+        }
+
         data
     }
 }
@@ -168,15 +211,11 @@ impl<'a> Labels<'a> {
         confusion_result: &ConfusionResult,
         max_depth: usize,
     ) -> NeighborhoodResult {
-
-        let boundary_distances = confusion_result
-            .boundaries
-            .iter()
-            .map(|edge_index| {
-                let edge = &graph.graph.raw_edges()[edge_index.index()];
-                let target_label = self.codes[edge.target().index()];
-                (target_label as usize, edge.weight)
-            });
+        let boundary_distances = confusion_result.boundaries.iter().map(|edge_index| {
+            let edge = &graph.graph.raw_edges()[edge_index.index()];
+            let target_label = self.codes[edge.target().index()];
+            (target_label as usize, edge.weight)
+        });
 
         let visited: Vec<_> = confusion_result
             .boundaries
@@ -187,19 +226,17 @@ impl<'a> Labels<'a> {
             })
             .collect();
 
-        let connections = visited
-            .iter()
-            .flat_map(|(edge, targets)| {
-                let source_point = &graph.points[edge.source().index()];
-                targets
-                    .iter()
-                    .filter(|target| !confusion_result.contains(&target))
-                    .map(|target| {
-                        let target_label = self.codes[target.index()] as usize;
-                        let target_point = &graph.points[target.index()];
-                        (target_label, euclidean_distance(source_point, target_point))
-                    })
-            });
+        let connections = visited.iter().flat_map(|(edge, targets)| {
+            let source_point = &graph.points[edge.source().index()];
+            targets
+                .iter()
+                .filter(|target| !confusion_result.contains(&target))
+                .map(|target| {
+                    let target_label = self.codes[target.index()] as usize;
+                    let target_point = &graph.points[target.index()];
+                    (target_label, euclidean_distance(source_point, target_point))
+                })
+        });
 
         NeighborhoodResult {
             distances: boundary_distances.chain(connections).collect(),
@@ -211,11 +248,11 @@ impl<'a> Labels<'a> {
         &self,
         graph: &Graph,
         counfusion_results: &Vec<ConfusionResult>,
-        max_depth: Option<usize>,
+        max_depth: usize,
     ) -> Vec<NeighborhoodResult> {
         counfusion_results
             .iter()
-            .map(|c| self.neighborhood_for_label(graph, c, max_depth.unwrap_or(1)))
+            .map(|c| self.neighborhood_for_label(graph, c, max_depth))
             .collect()
     }
 }
@@ -321,8 +358,7 @@ impl Graph {
 fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Graph>()?;
 
-    #[pyfn(m)]
-    #[pyo3(name = "confusion")]
+    #[pyfn(m, name = "confusion")]
     fn confusion_py<'py>(
         py: Python<'py>,
         graph: &Graph,
@@ -330,8 +366,36 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     ) -> &'py PyArray2<u64> {
         let labels = Labels::from_codes(&codes.as_slice().unwrap());
         let confusion = labels.confusion(&graph);
-        let counts = confusion.counts().into_pyarray(py);
-        counts
+        confusion.counts().into_pyarray(py)
+    }
+
+    #[pyfn(m, name="neighborhood", signature=(graph, codes, max_depth=1))]
+    fn neighborhood_py<'py>(
+        py: Python<'py>,
+        graph: &Graph,
+        codes: PyReadonlyArray1<'_, i16>,
+        max_depth: usize,
+    ) -> &'py PyArray2<f64> {
+        let labels = Labels::from_codes(&codes.as_slice().unwrap());
+        let confusion = labels.confusion(&graph);
+        let neighborhood = labels.neighborhood(graph, &confusion, max_depth);
+        neighborhood.score().into_pyarray(py)
+    }
+
+    #[pyfn(m, name="confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
+    fn confusion_and_neighborhood_py<'py>(
+        py: Python<'py>,
+        graph: &Graph,
+        codes: PyReadonlyArray1<'_, i16>,
+        neighborhood_max_depth: usize,
+    ) -> (&'py PyArray2<u64>, &'py PyArray2<f64>) {
+        let labels = Labels::from_codes(&codes.as_slice().unwrap());
+        let confusion = labels.confusion(&graph);
+        let neighborhood = labels.neighborhood(graph, &confusion, neighborhood_max_depth);
+        (
+            confusion.counts().into_pyarray(py),
+            neighborhood.score().into_pyarray(py),
+        )
     }
 
     Ok(())
