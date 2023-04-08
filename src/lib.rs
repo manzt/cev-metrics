@@ -165,32 +165,41 @@ impl<'a> Labels<'a> {
     fn neighborhood_for_label(
         &self,
         graph: &Graph,
-        counfusion_result: &ConfusionResult,
+        confusion_result: &ConfusionResult,
         max_depth: usize,
     ) -> NeighborhoodResult {
-        let boundary_distances = counfusion_result.boundaries.iter().map(|edge_index| {
-            let edge = &graph.graph.raw_edges()[edge_index.index()];
-            let label = self.codes[edge.target().index()];
-            (label as usize, edge.weight)
-        });
 
-        let mut visited = HashSet::new();
-        for edge_index in &counfusion_result.boundaries {
-            let edge = &graph.graph.raw_edges()[edge_index.index()];
-            for target in graph.bfs(edge.target(), max_depth, None) {
-                if counfusion_result.contains(&target) {
-                    continue;
-                }
-                visited.insert((edge.source(), target));
-            }
-        }
+        let boundary_distances = confusion_result
+            .boundaries
+            .iter()
+            .map(|edge_index| {
+                let edge = &graph.graph.raw_edges()[edge_index.index()];
+                let target_label = self.codes[edge.target().index()];
+                (target_label as usize, edge.weight)
+            });
 
-        let connections = visited.iter().map(|(source, target)| {
-            let label = self.codes[target.index()];
-            let distance =
-                euclidean_distance(&graph.points[source.index()], &graph.points[target.index()]);
-            (label as usize, distance)
-        });
+        let visited: Vec<_> = confusion_result
+            .boundaries
+            .par_iter()
+            .map(|edge_index| {
+                let edge = &graph.graph.raw_edges()[edge_index.index()];
+                (edge, graph.bfs(edge.target(), max_depth, None))
+            })
+            .collect();
+
+        let connections = visited
+            .iter()
+            .flat_map(|(edge, targets)| {
+                let source_point = &graph.points[edge.source().index()];
+                targets
+                    .iter()
+                    .filter(|target| !confusion_result.contains(&target))
+                    .map(|target| {
+                        let target_label = self.codes[target.index()] as usize;
+                        let target_point = &graph.points[target.index()];
+                        (target_label, euclidean_distance(source_point, target_point))
+                    })
+            });
 
         NeighborhoodResult {
             distances: boundary_distances.chain(connections).collect(),
