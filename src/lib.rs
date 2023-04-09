@@ -153,6 +153,11 @@ impl<'a> Labels<'a> {
             .collect()
     }
 
+    fn confusion_threshold(&self, graph: &Graph) -> Vec<f64> {
+        let average_distances = self.average_distances(graph);
+        todo!();
+    }
+
     fn confusion_for_label(
         &self,
         graph: &Graph,
@@ -196,10 +201,9 @@ impl<'a> Labels<'a> {
     }
 
     fn confusion(&self, graph: &Graph) -> Vec<ConfusionResult> {
-        let average_distances = self.average_distances(graph);
         (0..self.n_categories)
-            .map(|label| {
-                let threshold = average_distances[label];
+            .zip(self.confusion_threshold(graph))
+            .map(|(label, threshold)| {
                 self.confusion_for_label(graph, label as i16, Some(threshold))
             })
             .collect()
@@ -211,10 +215,14 @@ impl<'a> Labels<'a> {
         confusion_result: &ConfusionResult,
         max_depth: usize,
     ) -> NeighborhoodResult {
-        let boundary_distances = confusion_result.boundaries.iter().map(|edge_index| {
+        let boundary_distances = confusion_result.boundaries.iter().filter_map(|edge_index| {
             let edge = &graph.graph.raw_edges()[edge_index.index()];
             let target_label = self.codes[edge.target().index()];
-            (target_label as usize, edge.weight)
+            if confusion_result.contains(&edge.target()) {
+                None
+            } else {
+                Some((target_label as usize, edge.weight))
+            }
         });
 
         let visited: Vec<_> = confusion_result
