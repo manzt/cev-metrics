@@ -82,11 +82,11 @@ impl<'a> NeighborhoodResult<'a> {
 }
 
 trait NeighborhoodSummary {
-    fn score(&self) -> Array2<f64>;
+    fn scores(&self) -> Array2<f64>;
 }
 
 impl<'a> NeighborhoodSummary for Vec<NeighborhoodResult<'a>> {
-    fn score(&self) -> Array2<f64> {
+    fn scores(&self) -> Array2<f64> {
         let summaries: Vec<_> = self.iter().map(|n| n.summarize()).collect();
 
         let counts: Vec<_> = summaries
@@ -136,26 +136,28 @@ impl<'a> Labels<'a> {
         }
     }
 
-    fn average_distances(&self, graph: &Graph) -> Vec<f64> {
-        if graph.graph.node_count() != self.codes.len() {
-            panic!("Number of nodes in graph does not match number of self");
-        }
-        let mut data = vec![(0.0, 0); self.n_categories];
-        for edge in graph.graph.raw_edges() {
-            if self.codes[edge.source().index()] == self.codes[edge.target().index()] {
-                let code = self.codes[edge.source().index()] as usize;
-                data[code].0 += edge.weight;
-                data[code].1 += 1;
-            }
-        }
-        data.iter()
-            .map(|(total, count)| *total / *count as f64)
-            .collect()
-    }
-
     fn confusion_threshold(&self, graph: &Graph) -> Vec<f64> {
-        let average_distances = self.average_distances(graph);
-        todo!();
+        graph
+            .graph
+            .raw_edges()
+            .iter()
+            .fold(vec![vec![]; self.n_categories], |mut data, edge| {
+                let source = edge.source().index();
+                let target = edge.target().index();
+                if self.codes[source] == self.codes[target] {
+                    let code = self.codes[source] as usize;
+                    data[code].push(edge.weight);
+                }
+                data
+            })
+            .iter()
+            .map(|distances| {
+                let n = distances.len() as f64;
+                let mean = distances.iter().sum::<f64>() / n;
+                let std = distances.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n;
+                mean + 3.0 * std
+            })
+            .collect()
     }
 
     fn confusion_for_label(
@@ -387,7 +389,7 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         let labels = Labels::from_codes(&codes.as_slice().unwrap());
         let confusion = labels.confusion(&graph);
         let neighborhood = labels.neighborhood(graph, &confusion, max_depth);
-        neighborhood.score().into_pyarray(py)
+        neighborhood.scores().into_pyarray(py)
     }
 
     #[pyfn(m, name="confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
@@ -402,7 +404,7 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         let neighborhood = labels.neighborhood(graph, &confusion, neighborhood_max_depth);
         (
             confusion.counts().into_pyarray(py),
-            neighborhood.score().into_pyarray(py),
+            neighborhood.scores().into_pyarray(py),
         )
     }
 

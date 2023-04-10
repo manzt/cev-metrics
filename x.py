@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from cev_metrics import Graph, confusion, neighborhood, confusion_and_neighborhood
+from cev_metrics import Graph, confusion_and_neighborhood
 
 
 def main():
@@ -25,9 +25,9 @@ def main():
         labels = labels.astype(np.int16)
 
     graph = Graph(points)
-    data = confusion_and_neighborhood(graph, labels)
-    print(data[0])
-    print(data[1])
+    confusion, neighborhood = confusion_and_neighborhood(graph, labels)
+    print(confusion)
+    print(neighborhood)
 
 
 if __name__ == "__main__":
