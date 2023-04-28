@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-import numpy as np
 import pandas as pd
-from cev_metrics import Graph, confusion_and_neighborhood
+from cev_metrics import confusion_and_neighborhood
 
+# import cev_metrics.py
 
 def main():
     df = pd.DataFrame(
@@ -14,18 +14,7 @@ def main():
         }
     ).astype({"label": "category"})
     df.info()
-
-    points = df[["x", "y"]].values
-    labels = df["label"].cat.codes.values
-
-    if points.dtype != np.float64:
-        points = points.astype(np.float64)
-
-    if labels.dtype != np.int16:
-        labels = labels.astype(np.int16)
-
-    graph = Graph(points)
-    confusion, neighborhood = confusion_and_neighborhood(graph, labels)
+    confusion, neighborhood = confusion_and_neighborhood(df)
     print(confusion)
     print(neighborhood)
 
