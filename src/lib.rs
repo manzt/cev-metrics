@@ -357,10 +357,16 @@ impl Graph {
     }
 
     fn __repr__(&self) -> String {
-        format!(
+        let str = format!(
             "{:?}",
             Dot::with_config(&self.graph, &[Config::EdgeNoLabel, Config::NodeNoLabel])
-        )
+        );
+        let max_len = 200;
+        if str.len() > max_len {
+            format!("{}...", &str[..max_len])
+        } else {
+            str
+        }
     }
 }
 

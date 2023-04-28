@@ -8,6 +8,7 @@
 #/target
 /Cargo.lock
 
-/__pycache__
+__pycache__
 Untitled*.ipynb
 *.ipynb_checkpoints
+*.so
