@@ -374,7 +374,7 @@ impl Graph {
 fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Graph>()?;
 
-    #[pyfn(m, name = "confusion")]
+    #[pyfn(m, name = "_confusion")]
     fn confusion_py<'py>(
         py: Python<'py>,
         graph: &Graph,
@@ -385,7 +385,7 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         confusion.counts().into_pyarray(py)
     }
 
-    #[pyfn(m, name="neighborhood", signature=(graph, codes, max_depth=1))]
+    #[pyfn(m, name="_neighborhood", signature=(graph, codes, max_depth=1))]
     fn neighborhood_py<'py>(
         py: Python<'py>,
         graph: &Graph,
@@ -398,7 +398,7 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         neighborhood.scores().into_pyarray(py)
     }
 
-    #[pyfn(m, name="confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
+    #[pyfn(m, name="_confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
     fn confusion_and_neighborhood_py<'py>(
         py: Python<'py>,
         graph: &Graph,
