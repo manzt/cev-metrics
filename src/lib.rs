@@ -34,7 +34,7 @@ struct ConfusionResult<'a> {
 
 impl<'a> ConfusionResult<'a> {
     fn contains(&self, node: &NodeIndex) -> bool {
-        self.set.contains(&node)
+        self.set.contains(node)
     }
 }
 
@@ -72,10 +72,8 @@ impl<'a> NeighborhoodResult<'a> {
                 Some(x) => Some((x.0 + 1, x.1 + *distance)),
             }
         }
-        for entry in data.iter_mut() {
-            if let Some((count, total)) = entry {
-                *total = *total / *count as f64;
-            }
+        for (count, total) in data.iter_mut().flatten() {
+            *total /= *count as f64;
         }
         data
     }
@@ -187,8 +185,8 @@ impl<'a> Labels<'a> {
         // TODO, avoid second pass? Can we save edges found in bfs?
         let mut boundary_edges = HashSet::new();
 
-        for source in visited_with_threshold {
-            for edge in graph.graph.edges(source) {
+        for source in &visited_with_threshold {
+            for edge in graph.graph.edges(*source) {
                 if visited_without_threshold.contains(&edge.target()) {
                     boundary_edges.insert(edge.id());
                 }
@@ -196,9 +194,9 @@ impl<'a> Labels<'a> {
         }
 
         ConfusionResult {
-            set: visited_without_threshold,
+            set: visited_with_threshold,
             boundaries: boundary_edges,
-            labels: &self,
+            labels: self,
         }
     }
 
@@ -240,7 +238,7 @@ impl<'a> Labels<'a> {
             let source_point = &graph.points[edge.source().index()];
             targets
                 .iter()
-                .filter(|target| !confusion_result.contains(&target))
+                .filter(|target| !confusion_result.contains(target))
                 .map(|target| {
                     let target_label = self.codes[target.index()] as usize;
                     let target_point = &graph.points[target.index()];
@@ -250,14 +248,14 @@ impl<'a> Labels<'a> {
 
         NeighborhoodResult {
             distances: boundary_distances.chain(connections).collect(),
-            labels: &self,
+            labels: self,
         }
     }
 
     fn neighborhood(
         &self,
         graph: &Graph,
-        counfusion_results: &Vec<ConfusionResult>,
+        counfusion_results: &[ConfusionResult],
         max_depth: usize,
     ) -> Vec<NeighborhoodResult> {
         counfusion_results
@@ -279,7 +277,7 @@ impl From<&Vec<Point>> for Graph {
         let mut graph = UnGraph::<_, _>::from_elements(
             std::iter::repeat(Element::Node { weight: 0 }).take(points.len()),
         );
-        for triangle in triangulate(&points).triangles.chunks(3) {
+        for triangle in triangulate(points).triangles.chunks(3) {
             let (a, b, c) = (triangle[0], triangle[1], triangle[2]);
             // `update_edge` avoids adding duplicate edges
             graph.update_edge(
@@ -380,8 +378,8 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         graph: &Graph,
         codes: PyReadonlyArray1<'_, i16>,
     ) -> &'py PyArray2<u64> {
-        let labels = Labels::from_codes(&codes.as_slice().unwrap());
-        let confusion = labels.confusion(&graph);
+        let labels = Labels::from_codes(codes.as_slice().unwrap());
+        let confusion = labels.confusion(graph);
         confusion.counts().into_pyarray(py)
     }
 
@@ -392,8 +390,8 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         codes: PyReadonlyArray1<'_, i16>,
         max_depth: usize,
     ) -> &'py PyArray2<f64> {
-        let labels = Labels::from_codes(&codes.as_slice().unwrap());
-        let confusion = labels.confusion(&graph);
+        let labels = Labels::from_codes(codes.as_slice().unwrap());
+        let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, max_depth);
         neighborhood.scores().into_pyarray(py)
     }
@@ -405,8 +403,8 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         codes: PyReadonlyArray1<'_, i16>,
         neighborhood_max_depth: usize,
     ) -> (&'py PyArray2<u64>, &'py PyArray2<f64>) {
-        let labels = Labels::from_codes(&codes.as_slice().unwrap());
-        let confusion = labels.confusion(&graph);
+        let labels = Labels::from_codes(codes.as_slice().unwrap());
+        let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, neighborhood_max_depth);
         (
             confusion.counts().into_pyarray(py),
