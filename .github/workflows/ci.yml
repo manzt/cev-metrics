@@ -112,6 +112,9 @@ jobs:
     # needs: [linux, windows, macos, sdist]
     needs: [macos, sdist]
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v3
         with:
           name: wheels
@@ -122,3 +125,6 @@ jobs:
         with:
           command: upload
           args: --skip-existing *
+      - run: npx changelogithub@0.12
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
