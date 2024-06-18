@@ -9,3 +9,5 @@ except PackageNotFoundError:
     __version__ = "uninstalled"
 
 from cev_metrics._rust import confusion, confusion_and_neighborhood, neighborhood
+
+__all__ = ["confusion", "confusion_and_neighborhood", "neighborhood"]
