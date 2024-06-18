@@ -369,7 +369,7 @@ impl Graph {
 }
 
 #[pymodule]
-fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
+fn cev_metrics(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Graph>()?;
 
     #[pyfn(m, name = "_confusion")]
@@ -377,10 +377,10 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         py: Python<'py>,
         graph: &Graph,
         codes: PyReadonlyArray1<'_, i16>,
-    ) -> &'py PyArray2<u64> {
+    ) -> Bound<'py, PyArray2<u64>> {
         let labels = Labels::from_codes(codes.as_slice().unwrap());
         let confusion = labels.confusion(graph);
-        confusion.counts().into_pyarray(py)
+        confusion.counts().into_pyarray_bound(py)
     }
 
     #[pyfn(m, name="_neighborhood", signature=(graph, codes, max_depth=1))]
@@ -389,11 +389,11 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         graph: &Graph,
         codes: PyReadonlyArray1<'_, i16>,
         max_depth: usize,
-    ) -> &'py PyArray2<f64> {
+    ) -> Bound<'py, PyArray2<f64>> {
         let labels = Labels::from_codes(codes.as_slice().unwrap());
         let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, max_depth);
-        neighborhood.scores().into_pyarray(py)
+        neighborhood.scores().into_pyarray_bound(py)
     }
 
     #[pyfn(m, name="_confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
@@ -402,13 +402,13 @@ fn cev_metrics(_py: Python, m: &PyModule) -> PyResult<()> {
         graph: &Graph,
         codes: PyReadonlyArray1<'_, i16>,
         neighborhood_max_depth: usize,
-    ) -> (&'py PyArray2<u64>, &'py PyArray2<f64>) {
+    ) -> (Bound<'py, PyArray2<u64>>, Bound<'py, PyArray2<f64>>) {
         let labels = Labels::from_codes(codes.as_slice().unwrap());
         let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, neighborhood_max_depth);
         (
-            confusion.counts().into_pyarray(py),
-            neighborhood.scores().into_pyarray(py),
+            confusion.counts().into_pyarray_bound(py),
+            neighborhood.scores().into_pyarray_bound(py),
         )
     }
 

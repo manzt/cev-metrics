@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 delaunator = "1.0.2"
-numpy = "0.20"
+numpy = "0.21"
 petgraph = "0.6.3"
-pyo3 = { version = "0.20", features = ["extension-module"] }
+pyo3 = { version = "0.21", features = ["extension-module"] }
 rayon = "1.7.0"
