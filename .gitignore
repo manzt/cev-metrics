@@ -12,3 +12,4 @@ __pycache__
 Untitled*.ipynb
 *.ipynb_checkpoints
 *.so
+dist
