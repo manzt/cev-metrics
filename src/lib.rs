@@ -270,6 +270,7 @@ impl<'a> Labels<'a> {
 struct Graph {
     graph: UnGraph<usize, f64>,
     points: Vec<Point>,
+    ambiguous_circumcircle_count: usize,
 }
 
 impl From<&Vec<Point>> for Graph {
@@ -277,6 +278,7 @@ impl From<&Vec<Point>> for Graph {
         let mut graph = UnGraph::<_, _>::from_elements(
             std::iter::repeat(Element::Node { weight: 0 }).take(points.len()),
         );
+        let triangulation = triangulate(points);
         for triangle in triangulate(points).triangles.chunks(3) {
             let (a, b, c) = (triangle[0], triangle[1], triangle[2]);
             // `update_edge` avoids adding duplicate edges
@@ -299,6 +301,7 @@ impl From<&Vec<Point>> for Graph {
         Self {
             graph,
             points: points.clone(),
+            ambiguous_circumcircle_count: triangulation.ambiguous_circumcircle_count
         }
     }
 }
@@ -352,6 +355,10 @@ impl Graph {
     #[new]
     fn py_new(coords: PyReadonlyArray2<'_, f64>) -> PyResult<Self> {
         Ok(Graph::from(&coords))
+    }
+
+    fn ambiguous_circumcircle_count(&self) -> usize {
+        self.ambiguous_circumcircle_count
     }
 
     fn __repr__(&self) -> String {

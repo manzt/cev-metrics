@@ -9,17 +9,22 @@ from cev_metrics.cev_metrics import (
 )
 
 
-def _prepare(df: pd.DataFrame):
+def _prepare_xy(df: pd.DataFrame) -> Graph:
     points = df[["x", "y"]].values
-    codes = df["label"].cat.codes.values
 
     if points.dtype != np.float64:
         points = points.astype(np.float64)
 
+    return Graph(points)
+
+
+def _prepare_labels(df: pd.DataFrame) -> np.ndarray:
+    codes = df["label"].cat.codes.values
+
     if codes.dtype != np.int16:
         codes = codes.astype(np.int16)
 
-    return Graph(points), codes
+    return codes
 
 
 def confusion(df: pd.DataFrame):
@@ -30,8 +35,7 @@ def confusion(df: pd.DataFrame):
     df : pd.DataFrame
         Dataframe with columns `x`, `y` and `label`. `label` must be a categorical.
     """
-    graph, codes = _prepare(df)
-    return _confusion(graph, codes)
+    return _confusion(_prepare_xy(df), _prepare_labels(df))
 
 
 def neighborhood(df: pd.DataFrame, max_depth: int = 1):
@@ -45,8 +49,7 @@ def neighborhood(df: pd.DataFrame, max_depth: int = 1):
     max_depth : int, optional
         Maximum depth (or hops) to consider for neighborhood metric. Default is 1.
     """
-    graph, codes = _prepare(df)
-    return _neighborhood(graph, codes, max_depth)
+    return _neighborhood(_prepare_xy(df), _prepare_labels(df))
 
 
 def confusion_and_neighborhood(df: pd.DataFrame, max_depth: int = 1):
@@ -60,5 +63,15 @@ def confusion_and_neighborhood(df: pd.DataFrame, max_depth: int = 1):
     max_depth : int, optional
         Maximum depth (or hops) to consider for neighborhood metric. Default is 1.
     """
-    graph, codes = _prepare(df)
-    return _confusion_and_neighborhood(graph, codes, max_depth)
+    return _confusion_and_neighborhood(_prepare_xy(df), _prepare_labels(df), max_depth)
+
+
+def ambiguous_circumcircle_count(df: pd.DataFrame):
+    """Returns the number of ambiguous circumcircles found in the Delaunay triangulation.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe with columns `x`, `y` and `label`. `label` must be a categorical.
+    """
+    return _prepare_xy(df).ambiguous_circumcircle_count()

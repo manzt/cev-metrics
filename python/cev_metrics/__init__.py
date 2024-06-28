@@ -8,6 +8,11 @@ try:
 except PackageNotFoundError:
     __version__ = "uninstalled"
 
-from cev_metrics._rust import confusion, confusion_and_neighborhood, neighborhood
+from cev_metrics._rust import (
+    confusion,
+    confusion_and_neighborhood,
+    neighborhood,
+    ambiguous_circumcircle_count,
+)
 
 __all__ = ["confusion", "confusion_and_neighborhood", "neighborhood"]
