@@ -9,7 +9,7 @@ name = "cev_metrics"
 crate-type = ["cdylib"]
 
 [dependencies]
-delaunator = "1.0.2"
+delaunator = { git = "https://github.com/manzt/delaunator-rs.git", rev = "c0e718b" }
 numpy = "0.21"
 petgraph = "0.6.3"
 pyo3 = { version = "0.21", features = ["extension-module"] }

@@ -1,7 +1,7 @@
+import platform
 import statistics
 import timeit
 import typing
-import platform
 
 import pandas as pd
 from cev_metrics import confusion_and_neighborhood

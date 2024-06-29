@@ -1,13 +1,14 @@
-try:
-    from importlib.metadata import PackageNotFoundError, version
-except ImportError:
-    from importlib_metadata import PackageNotFoundError, version  # type: ignore
+"""cev-metrics: A Python package for computing the metrics used in the CEV project."""
 
-try:
-    __version__ = version("cev-metrics")
-except PackageNotFoundError:
-    __version__ = "uninstalled"
+import importlib.metadata
 
-from cev_metrics._rust import confusion, confusion_and_neighborhood, neighborhood
+__version__ = importlib.metadata.version("cev-metrics")
 
-__all__ = ["confusion", "confusion_and_neighborhood", "neighborhood"]
+from cev_metrics._rust import (
+    confusion,
+    confusion_and_neighborhood,
+    graph_stats,
+    neighborhood,
+)
+
+__all__ = ["confusion", "confusion_and_neighborhood", "neighborhood", "graph_stats"]
