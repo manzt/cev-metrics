@@ -1,6 +1,8 @@
+"""Deprecated python fuctions for prior to porting to Rust."""
+
 import heapq
-from dataclasses import dataclass
 from collections import deque
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -38,13 +40,13 @@ def create_delaunay_graph(X: np.ndarray, clip: str = "convex hull"):
     nx.Graph
         A networkx graph representing the Delaunay graph.
     """
-
     cells, _ = voronoi_frames(X, clip=clip)
     delaunay = weights.Rook.from_dataframe(cells)
     return delaunay.to_networkx()
 
 
 def plot_delaunay(df: str | pd.DataFrame, ax=None, with_graph=True):
+    """Plot a Delaunay graph."""
     ax = ax or plt.gca()
     if isinstance(df, str):
         df = pd.read_parquet(f"../task2/parquet/{df}.parquet")
@@ -129,6 +131,7 @@ def bfs(graph: nx.Graph, start: int, max_depth: int):
         The node to start the search from.
     max_depth : int
         The maximum depth to search.
+
     Returns
     -------
     set[int]
@@ -217,7 +220,9 @@ def find_label_confusion(
         An array of shape (n,) of labels.
     graph : nx.Graph
         The graph to search.
-    depth_confusion : int, optional
+    label : str
+        The label to find the confusion set for.
+    max_depth : int, optional
         The maximum depth to search, by default 1.
     prune_factor : float, optional
         A factor to prune the search, by default 2. This is multiplied by the standard
@@ -286,6 +291,7 @@ def create_confusion_matrix(df: pd.DataFrame, infos: dict[str, ConfusionResult])
 
 
 def map_range(distances: np.ndarray, min_val: float, max_val: float):
+    """Map the distances to a range between 0 and 1."""
     out = (max_val - distances) / (max_val - min_val)
     out[distances > max_val] = 0
     out[distances < min_val] = 1
@@ -300,6 +306,7 @@ def find_label_neighborhood(
     scale: tuple[float, float],
     depth_limit: int,
 ):
+    """Find the neighborhood for a label."""
     boundary_edges = confusion_result.boundary_edges
     if len(boundary_edges) == 0:
         return []
@@ -334,6 +341,7 @@ def find_neighborhoods(
     scale: tuple[float | None, float | None] = (None, None),
     **kwargs,
 ):
+    """Find the neighborhood for each label."""
     unique_labels = np.unique(labels)
 
     if confusion_results is None:
@@ -375,6 +383,7 @@ def find_neighborhoods(
 
 
 def neighborhood(df: pd.DataFrame, **kwargs):
+    """Find the neighborhood for each label in the dataframe."""
     points = df[["x", "y"]].to_numpy()
     labels = df["label"].to_numpy()
     graph = create_delaunay_graph(points)
@@ -392,9 +401,10 @@ def confusion(df: pd.DataFrame, counts: bool = False, **kwargs):
         If True, returns the full confusion matrix as a DataFrame, where
         each row is a count vector of the confusion set for a label.
         If False, returns a Series of confusion scores.
+    kwargs : dict
+        Additional keyword arguments for the confusion set.
 
     """
-
     points = df[["x", "y"]].to_numpy()
     labels = df["label"].to_numpy()
     graph = create_delaunay_graph(points)
@@ -416,6 +426,7 @@ def confusion_neighborhood(
     confusion_kwargs: None | dict = None,
     neighborhood_kwargs: None | dict = None,
 ):
+    """Find the confusion set and neighborhood for each label in the dataframe."""
     points = df[["x", "y"]].to_numpy()
     labels = df["label"].to_numpy()
     graph = create_delaunay_graph(points)
@@ -440,6 +451,7 @@ def confusion_neighborhood(
 
 
 def summarize_neighborhood(boundaries):
+    """Summarize the neighborhood results into a DataFrame."""
     d = pd.DataFrame.from_records(boundaries, columns=["count", "weight", "dist"])
     df = pd.concat(
         [d["count"].value_counts(), d.groupby(["count"]).mean()["dist"]], axis=1
@@ -449,6 +461,7 @@ def summarize_neighborhood(boundaries):
 
 
 def process_neighborhood(nresult):
+    """Process the neighborhood results into a DataFrame."""
     dfs = []
     for b in nresult.values():
         dfs.append(summarize_neighborhood(b))
@@ -489,7 +502,7 @@ def count_bits(uint: np.ndarray):
     return bits.sum(axis=2)
 
 
-def jaccard_distance(v1: np.ndarray, v2: np.ndarray, **kwargs):
+def jaccard_distance(v1: np.ndarray, v2: np.ndarray):
     """Compute the Jaccard distance between two uint8 arrays using bit operations.
 
     Parameters
@@ -498,6 +511,8 @@ def jaccard_distance(v1: np.ndarray, v2: np.ndarray, **kwargs):
         Array of uint8 values.
     v2 : np.ndarray
         Array of uint8 values.
+    kwargs : dict
+        Additional keyword arguments.
 
     Returns
     -------
@@ -517,15 +532,15 @@ def jaccard_distance(v1: np.ndarray, v2: np.ndarray, **kwargs):
     return 1 - (intersection / union)
 
 
-def hamming_distance(v1: np.ndarray, v2: np.ndarray, **kwargs):
+def hamming_distance(v1: np.ndarray, v2: np.ndarray):
     """Compute the Hamming distance between two uint8 arrays using bit operations.
 
     Parameters
     ----------
-        v1 : np.ndarray
-            Array of uint8 values.
-        v2 : np.ndarray
-            Array of uint8 values.
+    v1 : np.ndarray
+        Array of uint8 values.
+    v2 : np.ndarray
+        Array of uint8 values.
 
     Returns
     -------

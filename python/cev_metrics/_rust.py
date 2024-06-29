@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
@@ -66,12 +68,16 @@ def confusion_and_neighborhood(df: pd.DataFrame, max_depth: int = 1):
     return _confusion_and_neighborhood(_prepare_xy(df), _prepare_labels(df), max_depth)
 
 
-def ambiguous_circumcircle_count(df: pd.DataFrame):
-    """Returns the number of ambiguous circumcircles found in the Delaunay triangulation.
+@dataclass
+class GraphStats:
+    triangle_count: int
+    ambiguous_circumcircle_count: int
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataframe with columns `x`, `y` and `label`. `label` must be a categorical.
-    """
-    return _prepare_xy(df).ambiguous_circumcircle_count()
+
+def graph_stats(df: pd.DataFrame):
+    """Returns statistics from building the Delaunay triangulation."""
+    graph = _prepare_xy(df)
+    return GraphStats(
+        triangle_count=graph.triangle_count(),
+        ambiguous_circumcircle_count=graph.ambiguous_circumcircle_count(),
+    )
