@@ -70,6 +70,19 @@ def confusion_and_neighborhood(df: pd.DataFrame, max_depth: int = 1):
 
 @dataclass
 class GraphStats:
+    """Statistics from building the Delaunay triangulation.
+
+    Attributes
+    ----------
+    triangle_count : int
+        Number of triangles in the graph.
+
+    ambiguous_circumcircle_count : int
+        The number of occurrences where four or more points lie on the same
+        circumcircle, resulting in an ambiguous triangulation with
+        identical circumcenters.
+    """
+
     triangle_count: int
     ambiguous_circumcircle_count: int
 
