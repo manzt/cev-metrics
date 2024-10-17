@@ -4,25 +4,19 @@ A companion library to [`cev`](https://github.com/ozettetech/comparative-embeddi
 
 ## development
 
-This project uses [`rye`](https://rye-up.com/) for development. You can create
-a virtual environment with `rye sync`.
-
-```sh
-rye sync
-```
+This project uses [`uv`](https://astral.sh/uv/) for development.
 
 To develop the Rust component, you will need [`maturin`](https://github.com/PyO3/maturin).
 
 ```sh
-maturin develop --release && rye run python ./x.py
+uvx maturin develop --uv --release && uv run bench/run.py
 ```
 
-Code quality checks are available via `rye`.
+Code quality checks are available via `uv`.
 
 ```sh
-rye lint # lints code
-rye fmt  # formats code
-rye test # runs tests
+uv run ruff check .
+uv run pytest
 ```
 
-The [benchmark](./bench/README.md) can be run with `rye run bench`.
+The [benchmark](./bench/README.md) can be run with `uv run bench/run.py`.
