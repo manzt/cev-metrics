@@ -21,7 +21,6 @@ permissions:
 jobs:
   linux:
     # skip for now
-    if: ${{ false }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -58,7 +57,6 @@ jobs:
 
   windows:
     # skip for now
-    if: ${{ false }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
