@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "cev-metrics"
-version = "0.1.4"
+version = "0.1.5"
 description = "Rust implementations of our embedding comparison metrics, exposed via Python bindings."
 authors = [{ name = "Trevor Manz", email = "trevor.j.manz@gmail.com" }]
 dependencies = ["numpy"]
