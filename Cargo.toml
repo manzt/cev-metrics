@@ -11,6 +11,6 @@ crate-type = ["cdylib"]
 [dependencies]
 delaunator = { git = "https://github.com/manzt/delaunator-rs.git", rev = "c0e718b" }
 numpy = "0.21"
-petgraph = "0.6.3"
+petgraph = "0.7.0"
 pyo3 = { version = "0.21", features = ["extension-module"] }
 rayon = "1.7.0"
