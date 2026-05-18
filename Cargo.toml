@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 delaunator = { git = "https://github.com/manzt/delaunator-rs.git", rev = "c0e718b" }
-numpy = "0.21"
+numpy = "0.28"
 petgraph = "0.6.3"
-pyo3 = { version = "0.21", features = ["extension-module"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 rayon = "1.7.0"
