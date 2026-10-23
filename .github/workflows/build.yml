@@ -20,7 +20,7 @@ jobs:
           - { runner: ubuntu-latest, target: ppc64le }
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - uses: PyO3/maturin-action@v1
@@ -29,7 +29,7 @@ jobs:
           args: --release --out dist
           sccache: 'true'
           manylinux: auto
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
@@ -45,7 +45,7 @@ jobs:
           - { runner: ubuntu-latest, target: armv7 }
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - uses: PyO3/maturin-action@v1
@@ -54,7 +54,7 @@ jobs:
           args: --release --out dist
           sccache: 'true'
           manylinux: musllinux_1_2
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
@@ -68,7 +68,7 @@ jobs:
           - { runner: windows-latest, target: x86 }
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
           architecture: ${{ matrix.platform.target }}
@@ -77,7 +77,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
@@ -91,7 +91,7 @@ jobs:
           - { runner: macos-14, target: aarch64 }
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - uses: PyO3/maturin-action@v1
@@ -99,7 +99,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
@@ -112,7 +112,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-sdist
           path: dist
