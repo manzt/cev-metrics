@@ -393,7 +393,7 @@ fn cev_metrics(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> Bound<'py, PyArray2<u64>> {
         let labels = Labels::from_codes(codes.as_slice().unwrap());
         let confusion = labels.confusion(graph);
-        confusion.counts().into_pyarray_bound(py)
+        confusion.counts().into_pyarray(py)
     }
 
     #[pyfn(m, name="_neighborhood", signature=(graph, codes, max_depth=1))]
@@ -406,7 +406,7 @@ fn cev_metrics(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let labels = Labels::from_codes(codes.as_slice().unwrap());
         let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, max_depth);
-        neighborhood.scores().into_pyarray_bound(py)
+        neighborhood.scores().into_pyarray(py)
     }
 
     #[pyfn(m, name="_confusion_and_neighborhood", signature=(graph, codes, neighborhood_max_depth=1))]
@@ -420,8 +420,8 @@ fn cev_metrics(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let confusion = labels.confusion(graph);
         let neighborhood = labels.neighborhood(graph, &confusion, neighborhood_max_depth);
         (
-            confusion.counts().into_pyarray_bound(py),
-            neighborhood.scores().into_pyarray_bound(py),
+            confusion.counts().into_pyarray(py),
+            neighborhood.scores().into_pyarray(py),
         )
     }
 

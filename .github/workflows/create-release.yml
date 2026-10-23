@@ -1,0 +1,72 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          CURRENT=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/^version = "(.*)"/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP" in
+            patch) PATCH=$((PATCH + 1)) ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            *) echo "::error::Unknown bump: $BUMP"; exit 1 ;;
+          esac
+          VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Current: $CURRENT -> Next: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version in Cargo.toml and pyproject.toml
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          sed -i -E "0,/^version = \".*\"/ s//version = \"$VERSION\"/" Cargo.toml
+          sed -i -E "0,/^version = \".*\"/ s//version = \"$VERSION\"/" pyproject.toml
+          grep -E '^version = ' Cargo.toml pyproject.toml
+
+      - name: Update or create cev-release branch and PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B cev-release
+          git add Cargo.toml pyproject.toml
+          git commit -m "Release v$VERSION"
+          git push -f origin cev-release
+
+          BODY="Merging this PR publishes \`v$VERSION\` to PyPI and creates a tagged GitHub release.
+
+          Run **Create Release** again to roll this PR forward to a different version."
+
+          if gh pr view cev-release --json number >/dev/null 2>&1; then
+            gh pr edit cev-release --title "Release v$VERSION" --body "$BODY"
+          else
+            gh pr create --base main --head cev-release \
+              --title "Release v$VERSION" \
+              --body "$BODY"
+          fi
